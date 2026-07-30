@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>无人机装备仿真评估系统 · 项目汇报</title>
+<style>
+:root {
+  --bg: #050505;
+  --fg: #ffffff;
+  --g1: #f0f0f0;
+  --g2: #c8c8c8;
+  --g3: #909090;
+  --g4: #5a5a5a;
+  --g5: #2a2a2a;
+  --silver: #b8c4cc;
+  --silver-dim: #6a747c;
+  --accent: #4a8a9a;
+  --accent-glow: rgba(74,138,154,0.35);
+  --glass-bg: rgba(18,18,20,0.45);
+  --glass-strong: rgba(12,12,14,0.66);
+  --glass-border: rgba(255,255,255,0.12);
+  --radius: 16px;
+  --font-sans: 'PingFang SC','Microsoft YaHei','Noto Sans SC',system-ui,sans-serif;
+  --font-mono: 'Consolas','JetBrains Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;overflow:hidden;background:#000;color:var(--fg);font-family:var(--font-sans)}
+
+/* 背景层: 无人机巷战场景完整融入, 不裁剪, cover铺满 */
+.bg-layer{position:fixed;inset:0;z-index:0;background-size:cover;background-position:center;background-repeat:no-repeat;transition:background-image 0.9s ease}
+.bg-overlay{position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse at 30% 20%,rgba(10,10,10,0.15),transparent 60%),radial-gradient(ellipse at 70% 80%,rgba(5,5,5,0.25),transparent 55%),linear-gradient(180deg,rgba(5,5,5,0.10) 0%,rgba(5,5,5,0.28) 100%)}
+.bg-noise{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:0.04;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* 3 个背景: 原图不裁剪, 用 cover 铺满全屏 */
+.bg-hero{background-image:url("report_assets/drone_hero_bg.jpg")}
+.bg-city{background-image:url("report_assets/drone_city_bg.jpg")}
+.bg-combat{background-image:url("report_assets/drone_combat_bg.jpg")}
+
+.deck{position:relative;z-index:3;width:100vw;height:100vh;overflow:hidden}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;padding:2.5vh 3vw;opacity:0;pointer-events:none;transition:opacity 0.55s ease}
+.slide.active{opacity:1;pointer-events:auto}
+
+.glass{background:var(--glass-bg);backdrop-filter:blur(16px) saturate(1.15);-webkit-backdrop-filter:blur(16px) saturate(1.15);border:1px solid var(--glass-border);border-radius:var(--radius);box-shadow:0 8px 32px rgba(0,0,0,0.45),inset 0 1px 0 rgba(255,255,255,0.06)}
+.glass-strong{background:var(--glass-strong);backdrop-filter:blur(22px) saturate(1.08);-webkit-backdrop-filter:blur(22px) saturate(1.08);border:1px solid rgba(255,255,255,0.13);border-radius:var(--radius);box-shadow:0 12px 40px rgba(0,0,0,0.55),inset 0 1px 0 rgba(255,255,255,0.08)}
+
+.slide-header{flex:0 0 auto;display:flex;align-items:baseline;justify-content:space-between;margin-bottom:1.6vh;padding-bottom:1vh;border-bottom:1px solid rgba(255,255,255,0.10)}
+.slide-header .num{font-family:var(--font-mono);font-size:0.85rem;color:var(--silver-dim);letter-spacing:3px}
+.slide-header h2{font-size:1.8rem;font-weight:600;letter-spacing:0.04em;background:linear-gradient(135deg,#fff 0%,var(--silver) 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.slide-header .meta{font-family:var(--font-mono);font-size:0.82rem;color:var(--g2);text-align:right;line-height:1.6}
+
+.slide-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:1.3vh}
+
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1.1vw;min-height:0}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.9vw;min-height:0}
+
+.card{padding:1.5vh 1.3vw;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.card h3{font-size:1.1rem;font-weight:500;color:var(--silver);letter-spacing:0.05em;margin-bottom:0.8vh;padding-bottom:0.5vh;border-bottom:1px solid rgba(255,255,255,0.08)}
+.card p,.card li,.card td{font-size:0.98rem;color:var(--g2);line-height:1.65}
+.card ul{list-style:none;padding:0}
+.card ul li{position:relative;padding-left:1.1em;margin-bottom:0.35em}
+.card ul li::before{content:'';position:absolute;left:0;top:0.62em;width:6px;height:6px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px var(--accent-glow)}
+
+.metrics-row{display:flex;gap:0.9vw;flex:0 0 auto}
+.metric-box{flex:1;padding:1.6vh 0.7vw;text-align:center}
+.metric-box .number{font-family:var(--font-mono);font-size:2.5rem;font-weight:700;color:var(--fg);line-height:1;letter-spacing:-0.02em;text-shadow:0 0 20px rgba(255,255,255,0.15)}
+.metric-box .number .unit{font-size:0.4em;color:var(--silver-dim);font-weight:400;margin-left:0.2em}
+.metric-box .label{font-size:0.85rem;color:var(--g3);margin-top:0.5vh;letter-spacing:0.08em}
+
+.tbl{width:100%;border-collapse:collapse;font-size:0.95rem}
+.tbl th{text-align:left;padding:0.65vh 0.7vw;color:var(--silver);font-weight:500;letter-spacing:0.05em;border-bottom:1px solid rgba(255,255,255,0.14);font-size:0.88rem;text-transform:uppercase}
+.tbl td{padding:0.55vh 0.7vw;color:var(--g2);border-bottom:1px solid rgba(255,255,255,0.05)}
+.tbl tr:hover td{background:rgba(74,138,154,0.06)}
+.tbl .num-col{font-family:var(--font-mono);color:var(--silver);text-align:right}
+.tbl .center{text-align:center}
+.tbl .pass{color:var(--accent);font-weight:600}
+
+.tags{display:flex;flex-wrap:wrap;gap:0.45vw}
+.tag{background:rgba(184,196,204,0.08);border:1px solid rgba(184,196,204,0.18);border-radius:999px;padding:0.4vh 0.75vw;font-size:0.8rem;color:var(--silver)}
+
+.cover{align-items:center;justify-content:center;text-align:center}
+.cover .tag-top{display:inline-block;padding:0.7vh 1.6vw;margin-bottom:2.2vh;font-size:0.88rem;letter-spacing:5px;color:var(--silver);border:1px solid rgba(255,255,255,0.16);border-radius:2px;background:rgba(255,255,255,0.04)}
+.cover h1{font-size:3.8rem;font-weight:700;letter-spacing:0.06em;margin-bottom:1.2vh;background:linear-gradient(135deg,#ffffff 0%,var(--silver) 60%,var(--accent) 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 60px rgba(184,196,204,0.2)}
+.cover .sub{font-size:1.25rem;color:var(--silver);letter-spacing:0.12em;margin-bottom:3.5vh}
+.cover .cover-meta{display:flex;gap:2.5vw;justify-content:center;font-family:var(--font-mono);font-size:0.85rem;color:var(--g2)}
+.cover .cover-meta span::before{content:'— ';color:var(--silver-dim)}
+
+/* 图片展示框: contain 完整显示, 不裁剪不压缩 */
+.img-frame{flex:1;min-height:0;border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.10);position:relative;display:flex;align-items:center;justify-content:center}
+.img-frame img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:12px}
+.img-frame .img-caption{position:absolute;left:0;right:0;bottom:0;padding:0.9vh 1vw;background:linear-gradient(transparent,rgba(0,0,0,0.82));font-size:0.8rem;color:var(--silver);letter-spacing:0.05em}
+.img-pair{display:grid;grid-template-columns:1fr 1fr;gap:0.9vw;flex:1;min-height:0}
+.img-triple{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.7vw;flex:1;min-height:0}
+
+.nav-dots{position:fixed;bottom:1.6vh;left:50%;transform:translateX(-50%);z-index:100;display:flex;gap:0.6vw}
+.nav-dot{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,0.2);cursor:pointer;transition:all 0.3s;border:none;padding:0}
+.nav-dot.active{background:var(--silver);transform:scale(1.4);box-shadow:0 0 12px rgba(184,196,204,0.5)}
+.nav-dot:hover{background:rgba(255,255,255,0.5)}
+.nav-arrows{position:fixed;bottom:1.6vh;z-index:100;display:flex;gap:0.8vw;font-family:var(--font-mono);font-size:0.85rem;color:var(--g3)}
+.nav-arrows.left{left:2.5vw}
+.nav-arrows.right{right:2.5vw}
+.nav-arrows span{cursor:pointer;padding:0.5vh 0.7vw;transition:color 0.2s}
+.nav-arrows span:hover{color:var(--silver)}
+.slide-counter{position:fixed;top:1.6vh;right:2.5vw;z-index:100;font-family:var(--font-mono);font-size:0.85rem;color:var(--g3)}
+
+@keyframes float-pulse{0%,100%{opacity:0.9;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
+.float-anim{animation:float-pulse 3s ease-in-out infinite}
+
+.slide.active .stagger>*{opacity:0;animation:fade-up 0.6s ease forwards}
+.slide.active .stagger>*:nth-child(1){animation-delay:0.1s}
+.slide.active .stagger>*:nth-child(2){animation-delay:0.2s}
+.slide.active .stagger>*:nth-child(3){animation-delay:0.3s}
+.slide.active .stagger>*:nth-child(4){animation-delay:0.4s}
+.slide.active .stagger>*:nth-child(5){animation-delay:0.5s}
+.slide.active .stagger>*:nth-child(6){animation-delay:0.6s}
+@keyframes fade-up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+
+.progress-bar{position:fixed;top:0;left:0;height:2px;background:linear-gradient(90deg,var(--silver),var(--accent));z-index:101;transition:width 0.5s ease;box-shadow:0 0 10px var(--accent-glow)}
+.highlight-num{font-family:var(--font-mono);font-weight:700;color:var(--silver)}
+.deco-line{width:40px;height:1px;background:linear-gradient(90deg,var(--silver),transparent);margin-bottom:0.8vh}
+.scroll-inner{overflow-y:auto;min-height:0}
+.scroll-inner::-webkit-scrollbar{width:4px}
+.scroll-inner::-webkit-scrollbar-thumb{background:rgba(184,196,204,0.2);border-radius:2px}
+
+.formula-box{background:rgba(74,138,154,0.06);border:1px solid rgba(74,138,154,0.18);border-radius:8px;padding:1.3vh 1.2vw}
+.formula-box .f-label{font-size:0.74rem;color:var(--silver-dim);letter-spacing:0.1em;margin-bottom:0.4vh;text-transform:uppercase}
+.formula-box .f-eq{font-family:var(--font-mono);font-size:1.35rem;color:var(--silver);margin-bottom:0.4vh}
+.formula-box .f-note{font-size:0.82rem;color:var(--g3)}
+
+.stage-flow{display:flex;align-items:center;gap:0.7vw;flex-wrap:wrap}
+.stage-chip{padding:0.75vh 1vw;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);font-size:0.88rem;color:var(--g2)}
+.stage-chip .s-num{font-family:var(--font-mono);color:var(--silver);font-size:0.76rem;display:block;margin-bottom:0.2vh}
+.stage-arrow{color:var(--silver-dim);font-size:1.1rem}
+</style>
+</head>
+<body>
+<div class="bg-layer bg-hero" id="bgLayer"></div>
+<div class="bg-overlay"></div>
+<div class="bg-noise"></div>
+<div class="progress-bar" id="progressBar"></div>
+<div class="slide-counter"><span id="curSlide">01</span> / <span id="totalSlides">10</span></div>
+<div class="nav-arrows left"><span id="prevBtn">◀ 上一页</span></div>
+<div class="nav-dots" id="navDots"></div>
+<div class="nav-arrows right"><span id="nextBtn">下一页 ▶</span></div>
+
+<div class="deck" id="deck">
+
+  <!-- ═══ Slide 1: 封面 ═══ -->
+  <section class="slide cover active" data-bg="hero">
+    <div class="glass-strong" style="padding:5.5vh 5vw;max-width:72vw">
+      <div class="tag-top">FFM-AFSIM 融合仿真平台 · v5.3</div>
+      <h1>无人机装备仿真评估系统</h1>
+      <div class="sub">项目汇报材料</div>
+      <div class="deco-line" style="margin:2vh auto"></div>
+      <div class="cover-meta">
+        <span>编制日期 2026.07.30</span>
+        <span>编制单位 项目组</span>
+        <span>内部参阅</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 2: 核心指标 + 前端全貌图 ═══ -->
+  <section class="slide" data-bg="city">
+    <div class="slide-header">
+      <div><div class="num">02 / 摘要</div><h2>核心评估指标</h2></div>
+      <div class="meta">10 架无人机 · 城市巷战场景<br>PX4 真实飞控 · 6 层避障</div>
+    </div>
+    <div class="slide-body">
+      <div class="metrics-row glass stagger" style="padding:2vh 1vw">
+        <div class="metric-box"><div class="number"><span class="counter" data-target="10" data-duration="1200">0</span><span class="unit">架</span></div><div class="label">无人机平台</div></div>
+        <div class="metric-box"><div class="number"><span class="counter" data-target="5" data-duration="1000">0</span><span class="unit">m</span></div><div class="label">航点跟踪精度</div></div>
+        <div class="metric-box"><div class="number"><span class="counter" data-target="55" data-duration="1400">0</span><span class="unit">fps</span></div><div class="label">运行帧率</div></div>
+        <div class="metric-box"><div class="number"><span class="counter" data-target="6" data-duration="900">0</span><span class="unit">层</span></div><div class="label">导航避障</div></div>
+        <div class="metric-box"><div class="number"><span class="counter" data-target="76" data-duration="1500">0</span></div><div class="label">功能单元</div></div>
+        <div class="metric-box"><div class="number"><span class="counter" data-target="148" data-duration="1600">0</span></div><div class="label">数据链路</div></div>
+      </div>
+      <div class="grid-2 stagger" style="flex:1;min-height:0">
+        <div class="glass card" style="justify-content:center">
+          <p style="font-size:1.1rem;color:var(--g1);line-height:1.85">
+            本项目围绕无人机装备在复杂城市环境与多场景对抗条件下的作战效能评估需求，构建了一套集成 <span class="highlight-num">PX4 真实飞控</span>、<span class="highlight-num">六层自主导航避障</span>、<span class="highlight-num">多类传感器探测</span>、<span class="highlight-num">三维态势可视化</span> 的仿真评估平台。系统已实现 10 架无人机城市巷战场景的完整推演能力，PX4 真实飞控模式 4 项验收测试全部通过，运行帧率稳定在 55fps 以上。
+          </p>
+        </div>
+        <div class="img-frame stagger">
+          <img src="report_assets/态势展示前端主界面全貌.png" alt="态势展示前端主界面全貌">
+          <div class="img-caption">态势展示前端主界面全貌 · 城市巷战场景实拍</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 3: 项目背景 + 巷战demo ═══ -->
+  <section class="slide" data-bg="city">
+    <div class="slide-header">
+      <div><div class="num">03 / 第一章</div><h2>项目背景与政策契合性</h2></div>
+      <div class="meta">面向主管单位评估需求<br>可量化 · 可复现 · 可追溯</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2 stagger" style="flex:1;min-height:0">
+        <div class="glass card">
+          <h3>传统实物测试的制约</h3>
+          <ul>
+            <li><strong style="color:var(--g1)">成本约束</strong> — 实物飞行测试单次成本高昂，难以覆盖多场景多样本</li>
+            <li><strong style="color:var(--g1)">安全风险</strong> — 城市环境、电磁对抗等高风险场景存在安全隐患</li>
+            <li><strong style="color:var(--g1)">可复现性不足</strong> — 受天气、空域影响，测试条件难以完全一致</li>
+            <li><strong style="color:var(--g1)">数据完整性</strong> — 传感器数据采集能力受限于实际挂载设备性能</li>
+          </ul>
+          <h3 style="margin-top:1.4vh">系统核心定位</h3>
+          <ul>
+            <li>提供可量化的装备性能评估数据</li>
+            <li>支持飞控系统在回路的真实物理模型仿真（PX4 SITL）</li>
+            <li>实现多场景、多样本的可复现评估流程</li>
+            <li>构建从想定编排到评估报告输出的完整闭环</li>
+          </ul>
+          <div class="tags" style="margin-top:1.2vh">
+            <span class="tag">MAVLink v2.0</span><span class="tag">PX4 Autopilot</span>
+            <span class="tag">军用仿真想定标准</span><span class="tag">数据溯源审计</span>
+          </div>
+        </div>
+        <div class="img-pair stagger">
+          <div class="img-frame"><img src="report_assets/城市巷战demo1.png" alt="城市巷战demo1"><div class="img-caption">城市巷战 demo · 蓝方侦察机进入街区</div></div>
+          <div class="img-frame"><img src="report_assets/城市巷战demo2.png" alt="城市巷战demo2"><div class="img-caption">城市巷战 demo · 多机协同态势</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 4: 无人机装备编队 ═══ -->
+  <section class="slide" data-bg="combat">
+    <div class="slide-header">
+      <div><div class="num">04 / 第二章</div><h2>无人机装备编队与平台参数</h2></div>
+      <div class="meta">蓝方 5 架 + 红方 5 架<br>侦察 · 电子战 · 打击 · 拦截</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2 stagger" style="flex:1;min-height:0">
+        <div class="glass card">
+          <h3>蓝方装备编队（5 架）</h3>
+          <div class="scroll-inner" style="flex:1">
+            <table class="tbl">
+              <thead><tr><th>编号</th><th>角色</th><th>速度</th><th>高度</th><th>航点</th></tr></thead>
+              <tbody>
+                <tr><td class="num-col">recon_01</td><td>侦察</td><td class="num-col">10m/s</td><td class="num-col">35-60m</td><td class="num-col">12</td></tr>
+                <tr><td class="num-col">recon_02</td><td>侦察</td><td class="num-col">10m/s</td><td class="num-col">38-60m</td><td class="num-col">11</td></tr>
+                <tr><td class="num-col">ew_01</td><td>电子战</td><td class="num-col">12m/s</td><td class="num-col">180-200m</td><td class="num-col">10</td></tr>
+                <tr><td class="num-col">strike_01</td><td>打击</td><td class="num-col">18m/s</td><td class="num-col">30-60m</td><td class="num-col">10</td></tr>
+                <tr><td class="num-col">strike_02</td><td>打击</td><td class="num-col">16m/s</td><td class="num-col">35-60m</td><td class="num-col">10</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tags" style="margin-top:1vh"><span class="tag">光电相机 500m/90°</span><span class="tag">电子干扰 800m/360°</span><span class="tag">打击导弹 1200m/60°</span></div>
+        </div>
+        <div class="glass card">
+          <h3>红方装备编队（5 架 · 450s 激活）</h3>
+          <div class="scroll-inner" style="flex:1">
+            <table class="tbl">
+              <thead><tr><th>编号</th><th>角色</th><th>速度</th><th>高度</th><th>航点</th></tr></thead>
+              <tbody>
+                <tr><td class="num-col">intercept_01</td><td>拦截</td><td class="num-col">15m/s</td><td class="num-col">40-120m</td><td class="num-col">6</td></tr>
+                <tr><td class="num-col">intercept_02</td><td>拦截</td><td class="num-col">15m/s</td><td class="num-col">45-120m</td><td class="num-col">5</td></tr>
+                <tr><td class="num-col">intercept_03</td><td>拦截</td><td class="num-col">14m/s</td><td class="num-col">45-120m</td><td class="num-col">5</td></tr>
+                <tr><td class="num-col">intercept_04</td><td>拦截</td><td class="num-col">14m/s</td><td class="num-col">45-120m</td><td class="num-col">5</td></tr>
+                <tr><td class="num-col">intercept_05</td><td>拦截</td><td class="num-col">15m/s</td><td class="num-col">50-150m</td><td class="num-col">5</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tags" style="margin-top:1vh"><span class="tag">空空武器 300m/30°</span><span class="tag">X500 四旋翼</span><span class="tag">真实装备规格建模</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 5: 飞控+六层导航 + 编辑器截图 ═══ -->
+  <section class="slide" data-bg="city">
+    <div class="slide-header">
+      <div><div class="num">05 / 第二章</div><h2>PX4 飞控集成与六层自主导航</h2></div>
+      <div class="meta">真实空气动力学建模<br>MAVLink v2.0 · 4/4 验收通过</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2 stagger" style="flex:1;min-height:0">
+        <div class="glass card">
+          <h3>双模式运行架构</h3>
+          <table class="tbl" style="margin-bottom:0.9vh">
+            <thead><tr><th>参数</th><th>离线插值</th><th>PX4 真实飞控</th></tr></thead>
+            <tbody>
+              <tr><td>位置来源</td><td>前端匀速插值</td><td>SITL 物理模型</td></tr>
+              <tr><td>航点跟踪</td><td>GPS 虚拟精度</td><td>MAVLink 下发</td></tr>
+              <tr><td>运动模型</td><td>匀速直线</td><td>12 状态动力学</td></tr>
+              <tr><td>适用场景</td><td>快速演示</td><td>效能评估</td></tr>
+            </tbody>
+          </table>
+          <div class="metrics-row">
+            <div class="metric-box glass" style="padding:0.9vh"><div class="number float-anim" style="font-size:1.5rem"><span class="counter" data-target="50" data-duration="1000">0</span><span class="unit">Hz</span></div><div class="label">飞控遥测</div></div>
+            <div class="metric-box glass" style="padding:0.9vh"><div class="number float-anim" style="font-size:1.5rem;animation-delay:0.5s"><span class="counter" data-target="10" data-duration="800">0</span><span class="unit">Hz</span></div><div class="label">前端推送</div></div>
+            <div class="metric-box glass" style="padding:0.9vh"><div class="number float-anim" style="font-size:1.5rem;animation-delay:1s"><span class="counter" data-target="4" data-duration="600">0</span><span class="unit">/4</span></div><div class="label">验收通过</div></div>
+          </div>
+          <h3 style="margin-top:1vh">六层递进式导航策略</h3>
+          <div class="stage-flow">
+            <div class="stage-chip"><span class="s-num">L1</span>航点追踪</div><span class="stage-arrow">▶</span>
+            <div class="stage-chip"><span class="s-num">L2</span>自主攻击</div><span class="stage-arrow">▶</span>
+            <div class="stage-chip"><span class="s-num">L3</span>无人机间避撞</div><span class="stage-arrow">▶</span>
+            <div class="stage-chip"><span class="s-num">L4</span>建筑软避障</div><span class="stage-arrow">▶</span>
+            <div class="stage-chip"><span class="s-num">L5</span>位置积分</div><span class="stage-arrow">▶</span>
+            <div class="stage-chip"><span class="s-num">L6</span>禁飞区硬约束</div>
+          </div>
+          <p style="margin-top:0.8vh;font-size:0.88rem;color:var(--g3)">软避障提前规避 + 硬约束兜底保障 = 纵深防御</p>
+        </div>
+        <div class="img-pair stagger">
+          <div class="img-frame"><img src="report_assets/源图编辑器整体界面（含布局标注）.png" alt="源图编辑器界面"><div class="img-caption">源图编辑器 · 整体界面含布局标注</div></div>
+          <div class="img-frame"><img src="report_assets/源图编辑器整体界面（含布局标注）运行中.png" alt="编辑器运行中"><div class="img-caption">源图编辑器 · 一键执行运行中</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 6: 传感器探测 + 雷达图 ═══ -->
+  <section class="slide" data-bg="combat">
+    <div class="slide-header">
+      <div><div class="num">06 / 第二章</div><h2>传感器探测与级联分类</h2></div>
+      <div class="meta">光电 · 雷达 · 电子战 · 敌我识别<br>探测 → 跟踪 → 识别 → 丢失</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2 stagger" style="flex:1;min-height:0">
+        <div class="glass card">
+          <h3>城市巷战传感器配置</h3>
+          <table class="tbl">
+            <thead><tr><th>传感器</th><th>渲染方式</th><th>距离</th><th>视场</th></tr></thead>
+            <tbody>
+              <tr><td>光电侦察相机</td><td>扇形半透明渐变</td><td class="num-col">500m</td><td class="num-col">90°</td></tr>
+              <tr><td>电子干扰设备</td><td>半球体波纹扩散</td><td class="num-col">800m</td><td class="num-col">360°</td></tr>
+              <tr><td>打击导弹锁定</td><td>窄扇形锁定框</td><td class="num-col">1200m</td><td class="num-col">60°</td></tr>
+              <tr><td>空空拦截武器</td><td>扇形扫描</td><td class="num-col">300m</td><td class="num-col">30°</td></tr>
+            </tbody>
+          </table>
+          <h3 style="margin-top:1.3vh">探测级联分类（置信度递进）</h3>
+          <div class="stage-flow" style="margin-top:0.5vh">
+            <div class="stage-chip"><span class="s-num">DETECT</span>探测</div><span class="stage-arrow">▶ 连续3帧</span>
+            <div class="stage-chip"><span class="s-num">TRACK</span>跟踪</div><span class="stage-arrow">▶ 距离&lt;30%</span>
+            <div class="stage-chip"><span class="s-num">IDENTIFY</span>识别</div>
+          </div>
+          <p style="margin-top:0.9vh;font-size:0.88rem;color:var(--g3)">只有持续、近距离探测的目标才会被识别，避免误报与虚警。1 帧未探测即回退到探测态。</p>
+        </div>
+        <div class="img-frame stagger">
+          <img src="report_assets/雷达图.png" alt="雷达图">
+          <div class="img-caption">战术雷达盘 · 电磁态势可视化</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 7: 源图编辑器 + 系统截图 ═══ -->
+  <section class="slide" data-bg="city">
+    <div class="slide-header">
+      <div><div class="num">07 / 第三章</div><h2>可视化编排系统（源图编辑器 → FFM 引擎）</h2></div>
+      <div class="meta">拖拽编排 · 一键执行<br>所见即所执行</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2 stagger" style="flex:1;min-height:0">
+        <div class="img-frame stagger">
+          <img src="report_assets/Screenshot 2026-07-30 203640.png" alt="系统总览截图">
+          <div class="img-caption">系统全貌 · 10 架无人机城市巷战推演实拍</div>
+        </div>
+        <div class="glass card">
+          <h3>客户自主能力</h3>
+          <ul>
+            <li>想定自主编排（拖拽功能单元）</li>
+            <li>参数灵活配置（右侧面板编辑）</li>
+            <li>想定模板复用（保存加载）</li>
+            <li>一键执行验证（即时启动引擎）</li>
+            <li>全程可追溯（版本管理）</li>
+          </ul>
+          <div class="grid-3" style="margin-top:1.1vh;gap:0.5vw">
+            <div class="metric-box glass" style="padding:0.9vh"><div class="number float-anim" style="font-size:1.5rem"><span class="counter" data-target="26" data-duration="800">0</span></div><div class="label">功能单元</div></div>
+            <div class="metric-box glass" style="padding:0.9vh"><div class="number float-anim" style="font-size:1.5rem;animation-delay:0.3s"><span class="counter" data-target="7" data-duration="600">0</span></div><div class="label">阶段泳道</div></div>
+            <div class="metric-box glass" style="padding:0.9vh"><div class="number float-anim" style="font-size:1.5rem;animation-delay:0.6s"><span class="counter" data-target="100" data-duration="1100">0</span></div><div class="label">节点上限</div></div>
+          </div>
+          <div class="tags" style="margin-top:0.9vh"><span class="tag">端口类型匹配</span><span class="tag">DAG 无环检测</span><span class="tag">必需端口校验</span><span class="tag">参数完整性</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 8: 态势展示前端 + 3种地图风格 ═══ -->
+  <section class="slide" data-bg="combat">
+    <div class="slide-header">
+      <div><div class="num">08 / 第四章</div><h2>态势展示前端 · 多场景风格切换</h2></div>
+      <div class="meta">CesiumJS 1.143 · React 18<br>三维态势 · DAG 回放 · 电磁 HUD</div>
+    </div>
+    <div class="slide-body">
+      <div class="img-triple stagger" style="flex:1;min-height:0">
+        <div class="img-frame"><img src="report_assets/实景地图1.png" alt="实景地图1"><div class="img-caption">实景模式 · 卫星图 + 建筑 3D Tiles</div></div>
+        <div class="img-frame"><img src="report_assets/科技地图.png" alt="科技地图"><div class="img-caption">科技风模式 · 暗色底 + 发光建筑</div></div>
+        <div class="img-frame"><img src="report_assets/简约地图.png" alt="简约地图"><div class="img-caption">简约风模式 · 隐藏网格线 + 装饰图层</div></div>
+      </div>
+      <div class="grid-2 stagger" style="flex:0 0 auto">
+        <div class="glass card" style="padding:1.3vh 1.1vw">
+          <h3 style="margin-bottom:0.5vh">界面空间布局规范</h3>
+          <div class="tags">
+            <span class="tag">右上 阶段卡片</span><span class="tag">左下 电磁HUD</span>
+            <span class="tag">左上 REC标记</span><span class="tag">右下 快捷键</span>
+            <span class="tag">中央60% 战场保护区</span>
+          </div>
+        </div>
+        <div class="glass card" style="padding:1.3vh 1.1vw">
+          <h3 style="margin-bottom:0.5vh">七视角 + 多场景切换</h3>
+          <div class="metrics-row">
+            <div class="metric-box" style="padding:0.4vh"><div class="number float-anim" style="font-size:1.4rem"><span class="counter" data-target="7" data-duration="600">0</span></div><div class="label">视角</div></div>
+            <div class="metric-box" style="padding:0.4vh"><div class="number float-anim" style="font-size:1.4rem;animation-delay:0.2s"><span class="counter" data-target="5" data-duration="500">0</span></div><div class="label">场景</div></div>
+            <div class="metric-box" style="padding:0.4vh"><div class="number float-anim" style="font-size:1.4rem;animation-delay:0.4s"><span class="counter" data-target="12" data-duration="800">0</span></div><div class="label">链路</div></div>
+            <div class="metric-box" style="padding:0.4vh"><div class="number float-anim" style="font-size:1.4rem;animation-delay:0.6s"><span class="counter" data-target="3" data-duration="400">0</span></div><div class="label">热切换</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 9: 评估方法论 + 实景图2 ═══ -->
+  <section class="slide" data-bg="city">
+    <div class="slide-header">
+      <div><div class="num">09 / 第六·七章</div><h2>评估方法论与性能验证</h2></div>
+      <div class="meta">能力贡献率 · 效能贡献率<br>10 项核心验收 · 全部通过</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2 stagger" style="flex:1;min-height:0">
+        <div class="glass card">
+          <h3>核心评估指标公式</h3>
+          <div class="formula-box" style="margin-bottom:1.1vh">
+            <div class="f-label">能力贡献率（静态 · 单次）</div>
+            <div class="f-eq">ΔC = (C_A − C_0) / C_0</div>
+            <div class="f-note">电子战型对探测覆盖率贡献：<span class="highlight-num">60%</span></div>
+          </div>
+          <div class="formula-box">
+            <div class="f-label">效能贡献率（动态 · 多次试验）</div>
+            <div class="f-eq">ΔE = (E_A − E_0) / E_0</div>
+            <div class="f-note">红方拦截机对蓝方打击削减：<span class="highlight-num">39%</span>（100 次蒙特卡洛）</div>
+          </div>
+          <h3 style="margin-top:1.3vh">性能基准与验收</h3>
+          <div class="metrics-row">
+            <div class="metric-box glass" style="padding:0.7vh"><div class="number float-anim" style="font-size:1.5rem"><span class="counter" data-target="55" data-duration="900">0</span><span class="unit">fps</span></div><div class="label">渲染帧率</div></div>
+            <div class="metric-box glass" style="padding:0.7vh"><div class="number float-anim" style="font-size:1.5rem;animation-delay:0.3s"><span class="counter" data-target="800" data-duration="1200">0</span><span class="unit">MB</span></div><div class="label">内存上限</div></div>
+            <div class="metric-box glass" style="padding:0.7vh"><div class="number float-anim" style="font-size:1.5rem;animation-delay:0.6s"><span class="counter" data-target="2" data-duration="400">0</span><span class="unit">h+</span></div><div class="label">连续运行</div></div>
+          </div>
+          <table class="tbl" style="margin-top:0.8vh">
+            <thead><tr><th>验收项</th><th>结果</th></tr></thead>
+            <tbody>
+              <tr><td>Cesium 3D 引擎初始化</td><td class="center pass">通过</td></tr>
+              <tr><td>六层避障系统</td><td class="center pass">通过</td></tr>
+              <tr><td>传感器探测级联</td><td class="center pass">通过</td></tr>
+              <tr><td>PX4 真实飞控集成</td><td class="center pass">4/4</td></tr>
+              <tr><td>多场景连续切换 20 次</td><td class="center pass">无崩溃</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="img-frame stagger">
+          <img src="report_assets/实景地图2.png" alt="实景地图2">
+          <div class="img-caption">实景模式 · 卫星图 + 三维态势融合</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 10: 应用成效 ═══ -->
+  <section class="slide" data-bg="hero">
+    <div class="slide-header">
+      <div><div class="num">10 / 第八~十章</div><h2>应用成效 · 安全管控 · 后续规划</h2></div>
+      <div class="meta">评估周期压缩至小时级<br>边际成本接近零</div>
+    </div>
+    <div class="slide-body">
+      <div class="grid-3 stagger" style="flex:0 0 auto">
+        <div class="glass card">
+          <h3>应用成效</h3>
+          <ul>
+            <li><strong style="color:var(--g1)">周期缩短</strong> — 数周 → 小时级</li>
+            <li><strong style="color:var(--g1)">成本降低</strong> — 边际成本接近零</li>
+            <li><strong style="color:var(--g1)">场景扩展</strong> — 5 类典型场景安全复现</li>
+            <li><strong style="color:var(--g1)">结论可溯</strong> — 全量数据录制回放</li>
+          </ul>
+        </div>
+        <div class="glass card">
+          <h3>安全管控体系</h3>
+          <ul>
+            <li>操作层：编辑器校验 + 版本历史</li>
+            <li>执行层：故障容错 + 数据追溯</li>
+            <li>PX4 中断 → 自动回退离线模式</li>
+            <li>4 级性能降级策略</li>
+            <li>想定永久存储 + JSON Schema 校验</li>
+          </ul>
+        </div>
+        <div class="glass card">
+          <h3>后续规划</h3>
+          <ul>
+            <li><strong style="color:var(--g1)">近期</strong> — 10+ 架并行飞控 · PDF 自动报告</li>
+            <li><strong style="color:var(--g1)">中期</strong> — 多机协同 · 蒙特卡洛批量评估</li>
+            <li><strong style="color:var(--g1)">长期</strong> — 全生命周期评估体系</li>
+          </ul>
+          <div class="tags" style="margin-top:0.9vh"><span class="tag">国产化自主可控</span><span class="tag">标准化评估</span><span class="tag">人才培养</span></div>
+        </div>
+      </div>
+      <div class="glass" style="padding:1.2vh 2vw;text-align:center;flex:0 0 auto">
+        <p style="font-size:0.92rem;color:var(--g3);letter-spacing:0.05em">FFM-AFSIM 融合仿真平台项目组 · 2026年7月30日 · 内部参阅 — 本汇报所有技术数据均源自项目实际开发与测试记录</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  const slides=document.querySelectorAll('.slide');
+  const total=slides.length;
+  let current=0;
+  const bgLayer=document.getElementById('bgLayer');
+  const navDots=document.getElementById('navDots');
+  slides.forEach((_,i)=>{const dot=document.createElement('button');dot.className='nav-dot'+(i===0?' active':'');dot.addEventListener('click',()=>goTo(i));navDots.appendChild(dot)});
+  document.getElementById('totalSlides').textContent=String(total).padStart(2,'0');
+
+  function goTo(idx){
+    if(idx<0||idx>=total)return;
+    slides[current].classList.remove('active');
+    current=idx;
+    slides[current].classList.add('active');
+    document.querySelectorAll('.nav-dot').forEach((d,i)=>d.classList.toggle('active',i===current));
+    document.getElementById('curSlide').textContent=String(current+1).padStart(2,'0');
+    document.getElementById('progressBar').style.width=((current+1)/total*100)+'%';
+    bgLayer.className='bg-layer bg-'+slides[current].dataset.bg;
+    triggerCounters(slides[current]);
+  }
+
+  function triggerCounters(slide){
+    slide.querySelectorAll('.counter').forEach(el=>{
+      const target=parseFloat(el.dataset.target);
+      const duration=parseInt(el.dataset.duration)||1000;
+      const start=performance.now();
+      const isInt=target%1===0;
+      function tick(now){
+        const elapsed=now-start;
+        const progress=Math.min(elapsed/duration,1);
+        const eased=1-Math.pow(1-progress,3);
+        const value=target*eased;
+        el.textContent=isInt?Math.round(value):value.toFixed(1);
+        if(progress<1)requestAnimationFrame(tick);
+        else el.textContent=isInt?target:target.toFixed(1);
+      }
+      requestAnimationFrame(tick);
+    });
+  }
+
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();goTo(current+1)}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();goTo(current-1)}
+    else if(e.key==='Home'){e.preventDefault();goTo(0)}
+    else if(e.key==='End'){e.preventDefault();goTo(total-1)}
+  });
+  document.getElementById('prevBtn').addEventListener('click',()=>goTo(current-1));
+  document.getElementById('nextBtn').addEventListener('click',()=>goTo(current+1));
+
+  let wheelLock=false;
+  document.addEventListener('wheel',e=>{
+    if(wheelLock)return;
+    wheelLock=true;
+    setTimeout(()=>wheelLock=false,600);
+    if(e.deltaY>0)goTo(current+1);
+    else if(e.deltaY<0)goTo(current-1);
+  },{passive:true});
+
+  document.addEventListener('click',e=>{
+    if(e.target.closest('.nav-dots,.nav-arrows,.glass,.glass-strong,.card,table,.tags,.metric-box,.img-frame'))return;
+    const x=e.clientX/window.innerWidth;
+    if(x<0.3)goTo(current-1);
+    else if(x>0.7)goTo(current+1);
+  });
+
+  setTimeout(()=>triggerCounters(slides[0]),100);
+})();
+</script>
+</body>
+</html>
